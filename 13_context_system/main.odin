@@ -1,8 +1,12 @@
 package main
 
 import     "core:fmt"
+import     "core:log"
 import     "base:runtime"
 import str "core:strings"
+import     "core:math/rand"
+import     "core:debug/trace"
+
 
 // this is the struct of the context variable, its defined in base:runtime
 // Context :: struct {
@@ -16,6 +20,13 @@ import str "core:strings"
 // 	// Internal use only
 // 	_internal:              rawptr,
 // }
+
+data_t :: struct{
+  i_00 : int,
+  f_00 : f32,
+  b_00 : bool,
+}
+
 
 main :: proc()
 {
@@ -62,12 +73,54 @@ main :: proc()
 
   fmt.println( "-- logging --" )
 
+  log.debug( "debug pre init logger" )
+  log.info( "info pre init logger" )
+  log.warn( "warning pre init logger" )
+  log.error( "error pre init logger" )
+	
+  context.logger = log.create_console_logger()
+
+  log.debug( "debug post init logger" )
+  log.info( "info post init logger" )
+  log.warn( "warning post init logger" )
+  log.error( "error post init logger" )
+
   fmt.println( "-- data pointer --" )
+
+  data : data_t
+  fmt.println( "data:", data )
+
+  context.user_ptr = &data
+
+  context_user_ptr_proc()
+
+  fmt.println( "data:", data )
   
   fmt.println( "-- random generator --" )
+
+  fmt.println( "rand.float32():", rand.float32() )
+
+  // doesnt actually change anything cause context.random_generator is already == runtime.default_random_generator()
+  context.random_generator = runtime.default_random_generator()
+
+  fmt.println( "rand.float32():", rand.float32() )
   
   fmt.println( "-- assertion failure proc --" )
 
+  context.assertion_failure_proc = trace.assertion_failure_proc
+
+  // uncomment to see effect
+  assert( 0 == 1 )
+}
+
+context_user_ptr_proc :: proc()
+{
+  data : ^data_t = (^data_t)(context.user_ptr)
+  fmt.println( "in context_user_ptr_proc()" )
+
+  data.i_00 = 12345678
+  data.f_00 = 1.2345678
+  data.b_00 = true
 }
 
 no_context_proc :: proc "contextless" ()

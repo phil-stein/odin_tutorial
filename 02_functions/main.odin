@@ -28,6 +28,9 @@ main :: proc()
   fmt.println( "i_03:", i_03 )
 
   variadic_args_of_any_type( 123, 0.1234, true, "string" )
+
+  value : int = 0
+  recursive_proc( &value )
 }
 
 no_args_no_return :: proc()
@@ -105,4 +108,22 @@ variadic_args_of_any_type :: proc( args: ..any )
     fmt.print( "value:", value, "| " )
   }
   fmt.println()
+}
+
+// recursive means function calls itself
+// in this case it calls itself until arg is 10
+// for pointer tutorial see ..\14_pointers\main.odin 
+recursive_proc :: proc( arg: ^int )
+{
+  fmt.println( "called recursive_proc(), arg:", arg^ )
+
+  if arg^ < 10
+  {
+    arg^ += 1
+    recursive_proc( arg )
+  }
+  else 
+  {
+    fmt.println( "last call to recursive_proc()" )
+  }
 }

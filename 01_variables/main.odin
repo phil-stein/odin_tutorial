@@ -2,6 +2,10 @@ package main
 
 import "core:fmt"
 
+// constant value defined on command line like this:
+// odin run . -debug -define:CMDLINE_ARG=true
+CMDLINE_ARG :: #config( CMDLINE_ARG, true )
+
 
 main :: proc() 
 {
@@ -18,6 +22,29 @@ main :: proc()
   f_01 : f32  = 1.9753
   b_01 : bool = true
   fmt.println( "i_01:", i_01, "f_01:", f_01, "b_01:", b_01 )
+  
+  fmt.println( "-- precision --" )
+  f32_00 : f32 = 0.1234567890123456789
+  f64_00 : f64 = 0.1234567890123456789
+  // f32 looses more precision bc. it has less bits
+  fmt.println( "f32_00:", f32_00 )  // -> f32_00: 0.12345679
+  fmt.println( "f64_00:", f64_00 )  // -> f64_00: 0.12345678901234568
+
+  i64_max : i64 =  9223372036854775807
+  i64_min : i64 = -9223372036854775808
+  i32_max : i32 =  2147483647
+  i32_min : i32 = -2147483648
+  i16_max : i16 =  32767
+  i16_min : i16 = -32768
+  i8_max  : i8  =  127
+  i8_min  : i8  = -128
+
+  u64_max : u64 = 18446744073709551615
+  u32_max : u32 = 4294967295 
+  u16_max : u16 = 65535
+  u8_max  : u8  = 255
+
+  fmt.println(  )
 
   fmt.println( "-- type inferance --" ) // too lazy to google how its properly spelled sry
   i_02 := 10     // is int
@@ -97,7 +124,7 @@ main :: proc()
   bool_05 := 0 <= 1 // 0 is less than one or equal to one -> true
   bool_06 := 0 > 1  // 0 is more than one -> false
   bool_07 := 0 >= 1 // 0 is more than one or equal to one -> false
-  fmt.println( "bool_02:", bool_02, "bool_03:", bool_03 "bool_04:", bool_04, "bool_05:", bool_05, "bool_06:", bool_06, "bool_07:", bool_07 )
+  fmt.println( "bool_02:", bool_02, "bool_03:", bool_03, "bool_04:", bool_04, "bool_05:", bool_05, "bool_06:", bool_06, "bool_07:", bool_07 )
 
   fmt.println( "--- default values ---" )
   // odin zeroes everything by default, bzw. len(string) == 0

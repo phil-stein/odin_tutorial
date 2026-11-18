@@ -36,6 +36,35 @@ main :: proc()
   arr_i_00[9] = 9
   fmt.println( "arr_i_00:", arr_i_00 )
 
+  fmt.println( "--- dynamic arrays ---" )
+  // dynamic arrarys can have elements added to them or have elements removed
+
+  dyn_arr_00 := make( [dynamic]int, 10, 10 )
+
+  // acces just as usual
+  dyn_arr_00[0] = 69
+
+  fmt.println( "dyn_arr_00:", dyn_arr_00 )
+  fmt.println( "append( &dyn_arr_00, 32 )" )
+  append( &dyn_arr_00, 32 )
+  fmt.println( "dyn_arr_00:", dyn_arr_00 )
+
+  fmt.println( "dyn_arr_00:", dyn_arr_00 )
+  fmt.println( "append( &dyn_arr_00, slice_00 )" )
+  slice_00 := []int{ 1,2,3,4,5,6 } 
+  append( &dyn_arr_00, ..slice_00 )
+  fmt.println( "dyn_arr_00:", dyn_arr_00 )
+
+  // pop removes and return the last element
+  last_elem := pop( &dyn_arr_00 )
+
+  // removes element at index and copies all following elements one pos down
+  ordered_remove( &dyn_arr_00, 0 )
+  
+  // removes the element at index and swaps it wit the last element, making it ordered differently
+  unordered_remove( &dyn_arr_00, 0 )
+
+
   fmt.println( "--- slices ---" )
   // slices are excerpts out of arrays, under the hood they are just pointers, with a length value
   // you create them using the arr[start:end] syntax

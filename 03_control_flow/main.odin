@@ -81,4 +81,23 @@ main :: proc()
     	fmt.println("Unknown architecture")
   }
 
+  fmt.println( "-- when statement --" )
+  // when statements get executed at compile time
+  // so the code in them is completely removed when the condition isnt true
+
+  when ODIN_DEBUG {
+    fmt.println( "in debug mode" )
+  }
+
+  when ODIN_ARCH == .amd64
+  {
+    fmt.println( "architecture is amd64" )
+  }else{
+    fmt.println( "architecture isnt amd64" )
+  }
+
+  when ODIN_OS == .Windows {
+    fmt.println( "os is windows" )
+  }
+
 }
