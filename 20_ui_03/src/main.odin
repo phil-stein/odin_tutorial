@@ -1,52 +1,91 @@
 package main
-/**
- * Raven example - hello
- * The smallest program: a window built with the C API, a label and a button.
- *
- * Every object is an opaque handle (Rid). Layout follows Slate: a panel
- * arranges its children, and each child carries a *slot* that tells the panel
- * how to place it (padding, alignment, auto or fill size).
- */
 
-import "base:runtime"
-import "core:fmt"
-import "core:os"
+import     "core:os"
+import     "core:fmt"
+import str "core:strings"
+import     "base:runtime"
+import     "core:math/rand"
 
 import r "../external/raven/bindings/odin/raven"
 
-g_label : r.Rid
-g_clicks : int
 
-btn_click_callback :: proc "c" (button: r.Rid, user_data: rawptr) 
+data_t :: struct
+{
+  // basic layout boxes & window
+  window      : r.Rid,
+  box_window  : r.Rid,
+  box_main    : r.Rid,
+  box_overlay : r.Rid,
+
+  // general
+  last_question_idx    : int,
+  question_idx         : int,
+  question_amount      : int,
+  question_amount_cstr : cstring,
+  score                : int,
+  rounds               : int,
+  answer_cstr          : cstring,
+
+  // box_overlay
+  score_label : r.Rid,
+  score_label_cstr : cstring,
+
+  // box_main
+  title    : r.Rid,
+  question : r.Rid,
+  amount   : r.Rid,
+}
+data : data_t
+
+MAIN_BUTTON_SIZE_W :: 150 
+MAIN_BUTTON_SIZE_H :: 75
+
+question_t :: struct
+{
+  question:  cstring,
+  answer:    int,
+  range_min: int,
+  range_max: int,
+}
+
+questions_arr := [?]question_t{
+  question_t{ question="How many hairs does a normal person have ?", answer=100_000, range_min= 20_000, range_max=200_00},
+  question_t{ question="Whats a Gigahertz ?",                        answer=1_000_000_000, range_min=1_000_000, range_max=1_000_000_000_000 },
+  question_t{ question="How many cells are in the human body ?",     answer=30_000_000_000_000, range_min=250_000, range_max=1_000_000_000_000_000},
+  question_t{ question="How many cards are in a deck of cards ?",    answer=54, range_min=24, range_max=87 },
+  question_t{ question="How many countries are in the world ?",      answer=195, range_min=112, range_max=289 },
+  question_t{ question="How many countries are in europe ?",         answer=44, range_min=17, range_max=67 },
+  question_t{ question="How many people live in berlin ?",           answer=3_700_577, range_min=2_400_000, range_max=4_800_000 },
+  question_t{ question="How high is the world population ?",         answer=8_300_000_000, range_min=7_400_000_000, range_max=9_500_000_000 },
+}
+
+// questions_arr  := [?]string{ "How many hairs does a normal person have ?", "Whats a Gigahertz ?", "How many cells are in the human body ?", "How many cards are in a standard deck of cards ?", "How many countries are in the world ?", "How many countries are in europe ?", "How many people live in berlin ?", "How high is the world population ?" }
+// amount_arr     := [?]string{ "200.000", "1,000,000", "100,000,000,000,000,000", "34", "123", "67", "2,986,576", "9,010,000,000" }
+// answer_str_arr := [?]string{ "~100.000", "1,000,000,000", "30,000,000,000,000", "52 + 2 Jokers", "195", "44", "3.700.577", "8,300,000,000" }
+// answers_arr    := [?]bool{ false, true, false, true, false, true, false, true }  // true if higher, false if lower
+
+btn_dummy_callback :: proc "c" (button: r.Rid, user_data: rawptr) 
 {
   context = runtime.default_context()
-
-  g_clicks += 1
-  text := fmt.ctprintf( "Clicked %d times", g_clicks )
-	r.Rlabel_set_text(g_label, text);
+  fmt.println( "clicked button" )
 }
 
 btn_quit_callback :: proc "c" ( button: r.Rid, user_data: rawptr) 
 {
-  context = runtime.default_context()
-
 	r.Rquit(0)
 }
 
 raven_error_callback :: proc "c" (code: r.RError, severity: r.RSeverity, detail: cstring) 
 {
   context = runtime.default_context()
-
   fmt.printfln( "[Raven] %s (%s): %s", r.Rerror_to_string(code), r.Rseverity_to_string(severity), detail )
 }
 
 main :: proc() 
 {
-	window, box, title, row, button, quit : r.Rid
-
   desc: r.RInitDesc
 	desc.backend = r.R_BACKEND_VULKAN;
-	desc.app_name = "my_app_name"
+	desc.app_name = "20_ui_03"
   when ODIN_DEBUG { desc.enable_validation = true }
 
 	r.Rerror_set_callback(raven_error_callback);
@@ -56,41 +95,254 @@ main :: proc()
 		return 
 	}
 
-	// window = r.Rwindow_create( "Hello Raven", 420, 220, r.R_WINDOW_DEFAULT )
-	window = r.Rwindow_create( "Hello Raven", 620, 420, r.R_WINDOW_DEFAULT )
+	data.window = r.Rwindow_create( "Higher Lower Game", 620, 420, r.R_WINDOW_DEFAULT )
 
-	/* a vertical box centered in the window */
-	box = r.Rwidget_create( r.R_WIDGET_VBOX );
-	r.Rpanel_set_spacing( box, 12.0 );
-	r.Rslot_set_halign(box, r.R_HALIGN_CENTER);
-	r.Rslot_set_valign(box, r.R_VALIGN_CENTER);
-	r.Rwindow_set_content(window, box);
+  data.last_question_idx = -1 // doesnt exists so first call to set_new_question() can create any idx
 
-	title = r.Rwidget_add_child(box, r.Rlabel_create("Hello from Raven"));
-	r.Rlabel_set_text_size(title, 24.0);
-	r.Rslot_set_halign(title, r.R_HALIGN_CENTER);
+  r.Rtheme_apply( r.R_THEME_GLASS_DARK )  // r.R_THEME_DARK
+  r.Rtheme_set_material( r.R_MATERIAL_FROSTED_GLASS )
 
-	g_label = r.Rwidget_add_child(box, r.Rlabel_create("Press the button"));
-	r.Rslot_set_halign(g_label, r.R_HALIGN_CENTER);
+  // --- layout ---
+	data.box_window = r.Rwidget_create( r.R_WIDGET_OVERLAY )
+	r.Rslot_set_halign(data.box_window, r.R_HALIGN_FILL )
+	r.Rslot_set_valign(data.box_window, r.R_VALIGN_FILL )
+	r.Rwindow_set_content(data.window, data.box_window )
+  
+	data.box_main = r.Rwidget_add_child( data.box_window, r.Rwidget_create( r.R_WIDGET_VBOX ) )
+	r.Rpanel_set_spacing( data.box_main, 12.0 )
+	r.Rslot_set_halign(data.box_main, r.R_HALIGN_FILL )
+	r.Rslot_set_valign(data.box_main, r.R_VALIGN_FILL )
+	// r.Rwindow_set_content(data.window, data.box_main)
 
-	row = r.Rwidget_add_child(box, r.Rwidget_create(r.R_WIDGET_HBOX));
-	r.Rpanel_set_spacing(row, 8.0);
-	r.Rslot_set_halign(row, r.R_HALIGN_CENTER);
+	data.box_overlay = r.Rwidget_add_child( data.box_window, r.Rwidget_create( r.R_WIDGET_VBOX ) )
+	r.Rpanel_set_spacing( data.box_overlay, 12.0 )
+	r.Rslot_set_halign(data.box_overlay, r.R_HALIGN_FILL )
+	r.Rslot_set_valign(data.box_overlay, r.R_VALIGN_FILL )
 
-	button = r.Rwidget_add_child(row, r.Rbutton_create("Click me"));
-	r.Rbutton_set_style(button, r.R_BUTTON_PRIMARY);
-	r.Rbutton_set_clicked_callback(button, btn_click_callback, nil);
-	r.Rwidget_set_tooltip(button, "Counts the clicks");
+  fill_box_main()
+  fill_box_overlay()
 
-	quit = r.Rwidget_add_child(row, r.Rbutton_create("Quit"));
-	r.Rbutton_set_clicked_callback(quit, btn_quit_callback, nil);
-
-	/* the loop belongs to the application: Raven draws one frame per call,
-	 * and Rwait_frame sleeps until there is something to draw */
-  for r.Rwait_frame(-1.0) == 1 
+	// the loop belongs to the application: Raven draws one frame per call,
+	// and Rwait_frame sleeps until there is something to draw 
+  // for r.Rwait_frame(-1.0) == 1 
+  for r.Rdraw_frame() == 1 
   {
-    // if (frame) frame();
+    // --- general stuff ---
+    window_w, window_h : i32
+    r.Rwindow_get_size( data.window, &window_w, &window_h )
+
+    if r.Rwidget_is_valid( data.box_main ) == 1
+    {
+      r.Rwidget_set_size( data.box_main, f32(window_w), f32(window_h) )
+    }
   }
 	return
+}
+fill_box_overlay :: proc()
+{
+  bo := data.box_overlay
+  r.Rwidget_clear_children( bo )
+
+  size_box := r.Rwidget_add_child( bo, r.Rwidget_create( r.R_WIDGET_SIZE_BOX ) )
+  r.Rslot_set_padding( size_box, 12.0, 12.0, 12.0, 12.0 )
+  r.Rwidget_set_min_size( size_box, 120, 45 )
+  // r.Rwidget_set_max_size( size_box, 80, 40 )
+  // r.Rsize_box_set_aspect_ratio( size_box, 4.0 )
+	r.Rslot_set_halign( size_box, r.R_HALIGN_LEFT )
+	r.Rslot_set_valign( size_box, r.R_VALIGN_TOP )
+  
+  border := r.Rwidget_add_child( size_box, r.Rwidget_create( r.R_WIDGET_BORDER ) )
+  r.Rborder_set_padding( border, 10, 10, 10, 10 )
+  // r.Rborder_set_background( border, 0.44, 0.52, 0.98, 1.0 )
+  r.Rborder_set_background( border, 0.91, 0.59, 0.60, 1.0 )
+  // r.Rborder_set_outline( border, 3.0, 1.0, 1.0, 1.0, 1.0 )
+  BORDER_RADIUS :: 10.0
+  r.Rborder_set_corner_radius( border, BORDER_RADIUS, BORDER_RADIUS, BORDER_RADIUS, BORDER_RADIUS )
+  r.Rborder_set_material( border, r.R_MATERIAL_GLASS )
+  r.Rborder_set_shadow( border, 1.0, 10, 10 ) // idk if this does anything
+  r.Rwidget_set_transition( border, r.R_TRANSITION_FLY_DOWN, 0.5 )
+
+  data.score_label = r.Rwidget_add_child( border, r.Rlabel_create( "Score: 0" ) )
+	r.Rlabel_set_text_size( data.score_label, 30.0 )
+	r.Rslot_set_halign( data.score_label, r.R_HALIGN_LEFT )
+  r.Rwidget_set_transition( data.score_label, r.R_TRANSITION_FLY_DOWN, 0.5 )
+
+  score_label_set_text()
+}
+score_label_set_text :: proc()
+{
+  if len(data.score_label_cstr) > 0 do delete( data.score_label_cstr )
+  data.score_label_cstr = fmt.caprintf( "Score: %v / %v", data.score, data.rounds )
+  r.Rlabel_set_text( data.score_label, data.score_label_cstr )
+  r.Rwidget_play_transition( data.score_label, r.R_TRANSITION_POP, 1.0)
+}
+
+fill_box_main :: proc()
+{
+  bm := data.box_main
+  r.Rwidget_clear_children( bm )
+
+  data.title = r.Rwidget_add_child( bm, r.Rlabel_create("Higher or Lower") )
+	r.Rlabel_set_text_size( data.title, 30.0 )
+	r.Rslot_set_halign( data.title, r.R_HALIGN_CENTER )
+  r.Rwidget_set_transition( data.title, r.R_TRANSITION_FLY_DOWN, 0.5 )
+
+  spacer_00 := r.Rwidget_add_child( bm, r.Rwidget_create( r.R_WIDGET_SPACER ) )
+  r.Rspacer_set_size( spacer_00, 100, 100 )
+
+  data.question = r.Rwidget_add_child( bm, r.Rlabel_create("Question") )
+	r.Rlabel_set_text_size( data.question, 20.0 )
+	r.Rslot_set_halign( data.question, r.R_HALIGN_CENTER )
+  r.Rwidget_set_transition( data.question, r.R_TRANSITION_FLY_DOWN, 0.5 )
+  r.Rlabel_set_wrap( data.question, r.R_TRUE )
+
+  spacer_01 := r.Rwidget_add_child( bm, r.Rwidget_create( r.R_WIDGET_SPACER ) )
+  r.Rspacer_set_size( spacer_01, 15, 15 )
+
+  data.amount = r.Rwidget_add_child( bm, r.Rlabel_create("Amount") )
+	r.Rlabel_set_text_size( data.amount, 20.0 )
+	r.Rslot_set_halign( data.amount, r.R_HALIGN_CENTER )
+  r.Rwidget_set_transition( data.amount, r.R_TRANSITION_FLY_DOWN, 0.5 )
+  r.Rlabel_set_wrap( data.amount, r.R_TRUE )
+
+  spacer_02 := r.Rwidget_add_child( bm, r.Rwidget_create( r.R_WIDGET_SPACER ) )
+  r.Rspacer_set_size( spacer_02, 50, 50 )
+
+  row_00 := r.Rwidget_add_child( bm, r.Rwidget_create( r.R_WIDGET_HBOX ) )
+	r.Rpanel_set_spacing( row_00, 12.0 )
+	r.Rslot_set_halign( row_00, r.R_HALIGN_CENTER )
+	r.Rslot_set_valign( row_00, r.R_VALIGN_CENTER )
+
+  btn_00 := r.Rwidget_add_child( row_00, r.Rbutton_create( "Higher" ));
+	r.Rbutton_set_style( btn_00, r.R_BUTTON_PRIMARY);
+	r.Rbutton_set_clicked_callback( btn_00, btn_higher_callback, nil);
+	r.Rwidget_set_tooltip( btn_00, "You think the amount is higher");
+  r.Rwidget_set_min_size( btn_00, MAIN_BUTTON_SIZE_W, MAIN_BUTTON_SIZE_H )
+  r.Rwidget_set_transition( btn_00, r.R_TRANSITION_FLY_DOWN, 0.5 )
+
+
+  btn_01 := r.Rwidget_add_child( row_00, r.Rbutton_create( "Lower" ));
+	r.Rbutton_set_style(btn_01, r.R_BUTTON_PRIMARY);
+	r.Rbutton_set_clicked_callback(btn_01, btn_lower_callback, nil);
+	r.Rwidget_set_tooltip(btn_01, "You think the amount is lower");
+  r.Rwidget_set_min_size( btn_01, MAIN_BUTTON_SIZE_W, MAIN_BUTTON_SIZE_H )
+  r.Rwidget_set_transition( btn_01, r.R_TRANSITION_FLY_DOWN, 0.5 )
+
+  set_new_question()
+}
+
+set_new_question :: proc()
+{
+  data.question_idx = rand.int_range( 0, len(questions_arr) )
+  for data.question_idx == data.last_question_idx
+  {
+    data.question_idx = rand.int_range( 0, len(questions_arr) )
+  }
+  data.last_question_idx = data.question_idx
+
+  r.Rlabel_set_text( data.question, questions_arr[data.question_idx].question )
+
+  data.question_amount = rand.int_range( questions_arr[data.question_idx].range_min, questions_arr[data.question_idx].range_max )
+  for data.question_amount == questions_arr[data.question_idx].answer
+  {
+    data.question_amount = rand.int_range( questions_arr[data.question_idx].range_min, questions_arr[data.question_idx].range_max )
+  }
+
+  if len(data.question_amount_cstr) > 0 do delete(data.question_amount_cstr)
+  data.question_amount_cstr = fmt.caprint( data.question_amount )
+  r.Rlabel_set_text( data.amount, data.question_amount_cstr )
+}
+
+btn_higher_callback :: proc "c" (button: r.Rid, user_data: rawptr) 
+{
+  context = runtime.default_context()
+
+  data.rounds += 1
+
+  // if answers_arr[data.question_idx] == true
+  if questions_arr[data.question_idx].answer > data.question_amount
+  {
+    data.score += 1
+    score_label_set_text()
+    fill_box_main_game_done( true )
+  }
+  else  // false
+  {
+    fill_box_main_game_done( false )
+  }
+}
+btn_lower_callback :: proc "c" (button: r.Rid, user_data: rawptr) 
+{
+  context = runtime.default_context()
+
+  data.rounds += 1
+
+  // if answers_arr[data.question_idx] == true
+  if questions_arr[data.question_idx].answer > data.question_amount
+  {
+    fill_box_main_game_done( false )
+  }
+  else  // false
+  {
+    data.score += 1
+    score_label_set_text()
+    fill_box_main_game_done( true )
+  }
+}
+btn_new_question_callback :: proc "c" (button: r.Rid, user_data: rawptr) 
+{
+  context = runtime.default_context()
+  fill_box_main()
+}
+
+fill_box_main_game_done :: proc( won: bool )
+{
+  bm := data.box_main
+  r.Rwidget_clear_children( bm )
+
+  data.title = r.Rwidget_add_child( bm, r.Rlabel_create( won ? "You Won !!!" : "You Lost") )
+	r.Rlabel_set_text_size( data.title, 30.0 )
+	r.Rslot_set_halign( data.title, r.R_HALIGN_CENTER )
+  r.Rwidget_set_transition( data.title, r.R_TRANSITION_FLY_DOWN, 0.5 )
+
+  spacer_00 := r.Rwidget_add_child( bm, r.Rwidget_create( r.R_WIDGET_SPACER ) )
+  r.Rspacer_set_size( spacer_00, 50, 50 )
+
+  data.question = r.Rwidget_add_child( bm, r.Rlabel_create("Question") )
+	r.Rlabel_set_text_size( data.question, 20.0 )
+	r.Rslot_set_halign( data.question, r.R_HALIGN_CENTER )
+  r.Rwidget_set_transition( data.question, r.R_TRANSITION_FLY_DOWN, 0.5 )
+  r.Rlabel_set_wrap( data.question, r.R_TRUE )
+  // question_cstr := str.clone_to_cstring( questions_arr[data.question_idx] )
+  r.Rlabel_set_text( data.question, questions_arr[data.question_idx].question )
+
+
+  spacer_01 := r.Rwidget_add_child( bm, r.Rwidget_create( r.R_WIDGET_SPACER ) )
+  r.Rspacer_set_size( spacer_01, 15, 15 )
+
+  data.amount = r.Rwidget_add_child( bm, r.Rlabel_create("Amount") )
+	r.Rlabel_set_text_size( data.amount, 20.0 )
+	r.Rslot_set_halign( data.amount, r.R_HALIGN_CENTER )
+  r.Rwidget_set_transition( data.amount, r.R_TRANSITION_FLY_DOWN, 0.5 )
+  r.Rlabel_set_wrap( data.amount, r.R_TRUE )
+  // answer_cstr := str.clone_to_cstring( answer_str_arr[data.question_idx] )
+  if len(data.answer_cstr) > 0 do delete( data.answer_cstr )
+  data.answer_cstr = fmt.caprintf( "Answer: %v %v %v", questions_arr[data.question_idx].answer, questions_arr[data.question_idx].answer < data.question_amount ? "<" : ">", data.question_amount )
+  r.Rlabel_set_text( data.amount, data.answer_cstr )
+
+  spacer_02 := r.Rwidget_add_child( bm, r.Rwidget_create( r.R_WIDGET_SPACER ) )
+  r.Rspacer_set_size( spacer_02, 100, 100 )
+
+  row_00 := r.Rwidget_add_child( bm, r.Rwidget_create( r.R_WIDGET_HBOX ) )
+  r.Rslot_set_halign( row_00, r.R_HALIGN_CENTER )
+  r.Rslot_set_valign( row_00, r.R_VALIGN_CENTER )
+
+  btn_00 := r.Rwidget_add_child( row_00, r.Rbutton_create( "Next Question" ));
+	r.Rbutton_set_style( btn_00, r.R_BUTTON_PRIMARY);
+	r.Rbutton_set_clicked_callback( btn_00, btn_new_question_callback, nil);
+	r.Rwidget_set_tooltip( btn_00, "click for next question");
+  r.Rwidget_set_min_size( btn_00, MAIN_BUTTON_SIZE_W, MAIN_BUTTON_SIZE_H )
+  r.Rwidget_set_max_size( btn_00, 200, 100 )
+  r.Rwidget_set_transition( btn_00, r.R_TRANSITION_FLY_DOWN, 0.5 )
 }
 
